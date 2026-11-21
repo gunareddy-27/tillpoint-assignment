@@ -53,7 +53,12 @@ class Orders:
             raise OrderError("a shipped order cannot be cancelled")
         self.conn.execute("BEGIN IMMEDIATE")
         try:
-            if order["status"] == "paid":
+            # BUG 2 FIX: Stock must be released for ANY cancellation where stock was
+            # already reserved.  Stock is reserved at order *creation*, so both
+            # "pending" and "paid" orders have locked stock.  The original code only
+            # released for "paid", so cancelling an abandoned ("pending") checkout
+            # permanently swallowed the stock.
+            if order["status"] in ("pending", "paid"):
                 for item in order["items"]:
                     self.catalog.release(item["sku"], item["qty"])
             if order["coupon"]:

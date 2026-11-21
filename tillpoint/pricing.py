@@ -39,10 +39,15 @@ def round_half_up(numerator, denominator):
 
 
 def price_order(lines, region, coupon=None):
-    """Return dict(subtotal_cents, discount_cents, tax_cents, total_cents)."""
+    """Return dict(subtotal_cents, discount_cents, tax_cents, total_cents).
+
+    BUG 3 FIX: Tax was previously calculated on the pre-discount subtotal.
+    Customers with coupons were therefore taxed on money they never paid.
+    Fix: compute the discount first, then apply tax only to (sub - discount).
+    """
     sub = subtotal(lines)
-    tax = tax_for(sub, region)
-    discount = discount_for(coupon, sub)
+    discount = discount_for(coupon, sub)   # discount first
+    tax = tax_for(sub - discount, region)  # tax on what the customer actually pays
     return {
         "subtotal_cents": sub,
         "discount_cents": discount,

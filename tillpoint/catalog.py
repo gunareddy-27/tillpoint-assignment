@@ -51,11 +51,28 @@ class Catalog:
         self._cache.pop(sku, None)
 
     def reserve(self, sku, qty):
-        """Take qty units out of stock, or raise OutOfStock."""
-        product = self.get_product(sku)
-        if product.stock < qty:
-            raise OutOfStock(sku, qty, product.stock)
-        self.conn.execute("UPDATE products SET stock = stock - ? WHERE sku = ?", (qty, sku))
+        """Take qty units out of stock, or raise OutOfStock.
+
+        BUG 5 FIX: The original code read stock in Python, checked it, then
+        issued a separate UPDATE.  With two concurrent server workers both could
+        read the same stock value, both pass the Python check, and both decrement
+        — selling more stock than existed (TOCTOU race).
+
+        Fix: combine check and decrement into ONE atomic SQL statement.
+        The WHERE clause includes `stock >= qty` so the row is only updated when
+        sufficient stock exists.  If rowcount == 0, stock was insufficient (or
+        the sku is gone); we re-fetch to surface the right error message.
+        """
+        cur = self.conn.execute(
+            "UPDATE products SET stock = stock - ? WHERE sku = ? AND stock >= ?",
+            (qty, sku, qty),
+        )
+        if cur.rowcount == 0:
+            # Either unknown product or genuinely out of stock — re-fetch for a good error.
+            row = self.conn.execute("SELECT stock FROM products WHERE sku = ?", (sku,)).fetchone()
+            if row is None:
+                raise UnknownProduct(sku)
+            raise OutOfStock(sku, qty, row["stock"])
         self._cache.pop(sku, None)
 
     def release(self, sku, qty):

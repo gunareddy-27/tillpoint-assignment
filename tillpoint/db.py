@@ -40,9 +40,11 @@ CREATE TABLE IF NOT EXISTS payments (
     order_id INTEGER NOT NULL REFERENCES orders(id),
     event_id TEXT NOT NULL,
     amount_cents INTEGER NOT NULL,
-    received_at TEXT NOT NULL
+    received_at TEXT NOT NULL,
+    overpayment INTEGER NOT NULL DEFAULT 0  -- BUG 6 FIX: 1 = second charge on already-paid order
 );
 CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_event ON payments(event_id);  -- BUG 1 FIX: DB-level idempotency guard
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer, created_at);
 """
 
